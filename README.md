@@ -58,3 +58,11 @@ A R03 é uma aplicação funcional em evolução. O botão de STL do gerador cri
 - Implementado mecanismo de reconstrução robusta por pixels (tampas e paredes somente nos limites; índices de vértices compartilhados). Para imagens de fundo claro, usa automaticamente a via robusta. Em desenhos preto e branco, é fallback se a triangulação usual falhar.
 - Topologia conferida antes do download; compatibilidade real precisa ser verificada no Bambu Studio.
 - A função continua sendo uma **extrusão 2,5D**, não um modelo volumétrico completo tipo IA.
+
+## R05.1 — Publicação e cache
+
+- A interface apresenta explicitamente a revisão **R05.1**.
+- `index.html` referencia `styles.css?v=R05.1` e `app.js?v=R05.1`.
+- O módulo de conversão é importado como `image-to-stl.js?v=R05.1`, evitando carregar uma cópia antiga da revisão R04/R05 em cache.
+- O `vercel.json` exige revalidação dos recursos estáticos com `Cache-Control: no-cache, max-age=0, must-revalidate`.
+- Não altera processamento, dados do Supabase nem o TEMON Field.
