@@ -1,7 +1,7 @@
 {
   "name": "projetos-3d-temon",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Projetos 3D — Bambu Lab A1",
   "scripts": {
