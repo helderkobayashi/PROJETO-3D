@@ -48,3 +48,13 @@ Não armazene senhas, tokens do GitHub, `service_role` ou chaves secretas neste 
 ## Estado / limitações
 
 A R03 é uma aplicação funcional em evolução. O botão de STL do gerador cria uma **prévia geométrica**, sem garantir encaixes ou texto em relevo. Use a fonte SCAD para a geometria final e verifique no Bambu Studio. Os arquivos STL de projetos anteriores continuam disponíveis na pasta Google Drive do projeto.
+
+
+## R05 — Correção de silhuetas complexas
+
+- Novo modo **Objeto inteiro (fundo branco/claro)**: remove áreas claras conectadas à borda e mantém cores internas do personagem como parte da silhueta.
+- Modo **Áreas escuras** preservado para desenho em preto e branco.
+- Depois de gerar, a imagem 2D mostra o recorte em azul, facilitando verificar o que entrará no STL.
+- Implementado mecanismo de reconstrução robusta por pixels (tampas e paredes somente nos limites; índices de vértices compartilhados). Para imagens de fundo claro, usa automaticamente a via robusta. Em desenhos preto e branco, é fallback se a triangulação usual falhar.
+- Topologia conferida antes do download; compatibilidade real precisa ser verificada no Bambu Studio.
+- A função continua sendo uma **extrusão 2,5D**, não um modelo volumétrico completo tipo IA.
