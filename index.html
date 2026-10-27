@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css?v=R05.1" />
   <script type="importmap">{
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -17,7 +17,7 @@
       "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.76.1/+esm"
     }
   }</script>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/app.js?v=R05.1"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -29,7 +29,7 @@
         <button class="nav-item active" data-page="dashboard"><span class="nav-ico">▦</span> Visão geral</button>
         <button class="nav-item" data-page="projetos"><span class="nav-ico">⬡</span> Meus projetos</button>
         <button class="nav-item" data-page="gerador"><span class="nav-ico">✦</span> Gerador 3D <span class="new-chip">BETA</span></button>
-        <button class="nav-item" data-page="imagem-stl"><span class="nav-ico">◫</span> Imagem → STL <span class="new-chip">NOVO</span></button>
+        <button class="nav-item" data-page="imagem-stl"><span class="nav-ico">◫</span> Imagem → STL <span class="new-chip">R05.1</span></button>
         <button class="nav-item" data-page="visualizador"><span class="nav-ico">◈</span> Visualizador</button>
         <button class="nav-item" data-page="biblioteca"><span class="nav-ico">▤</span> Arquivos e peças</button>
       </nav>
@@ -49,7 +49,7 @@
         <section id="page-projetos" class="page"><div class="heading"><div><div class="eyebrow">BIBLIOTECA</div><h1>Meus projetos<span class="period">.</span></h1><p>Organize criações, acompanhe revisões e encontre arquivos.</p></div><button class="btn primary auth-action" data-action="new-project">＋ Novo projeto</button></div><div class="toolbar"><div class="search">⌕ <input id="project-search" type="search" placeholder="Buscar projeto, código ou categoria..." aria-label="Buscar projetos" /></div><select id="category-filter" aria-label="Filtrar categoria"><option value="TODOS">Todas as categorias</option><option value="BRINQUEDO">Brinquedos</option><option value="DECORATIVO">Decoração</option><option value="MINIATURA">Miniaturas</option><option value="LEMBRANCINHA">Lembrancinhas</option><option value="OUTROS">Outros</option></select></div><div class="cards" id="all-projects"></div></section>
         <section id="page-gerador" class="page"><div class="heading"><div><div class="eyebrow">FERRAMENTAS DE CRIAÇÃO</div><h1>Gerador paramétrico<span class="period">.</span></h1><p>Configure a geometria e exporte um modelo para sua Bambu Lab A1.</p></div></div><div class="builder-layout"><div class="panel builder-panel"><div class="panel-title"><strong>Configuração da peça</strong><span class="new-chip">R01 · BETA</span></div><label class="field-label">Tipo de modelo<select id="generator-type"><option value="track">Pista reta modular</option><option value="plaque">Plaquinha personalizada</option><option value="block">Base retangular</option></select></label><label class="field-label">Comprimento (mm)<input id="param-length" type="number" min="20" max="245" value="170" step="1"></label><label class="field-label">Largura (mm)<input id="param-width" type="number" min="15" max="245" value="52" step="1"></label><label class="field-label">Espessura base (mm)<input id="param-thickness" type="number" min="1.6" max="30" value="3.2" step="0.2"></label><div id="track-fields"><label class="field-label">Guarda-corpo (altura em mm)<input id="param-wall-height" type="number" min="3" max="30" value="8" step="1"></label><label class="field-label">Folga por lado (mm)<input id="param-clearance" type="number" min="0.1" max="0.6" value="0.28" step="0.01"></label></div><div id="plaque-fields" hidden><label class="field-label">Texto em relevo<input id="param-text" type="text" value="JOAQUIM" maxlength="22"></label><label class="field-label">Altura do relevo (mm)<input id="param-relief" type="number" min="0.6" max="5" value="1.2" step="0.2"></label></div><div class="hint" id="generator-hint">O encaixe da pista R01/R02 só é nominalmente compatível se a largura permanecer em 52 mm; faça um gabarito de folga antes de imprimir.</div><div class="builder-actions"><button id="btn-download-scad" class="btn primary">↓ Baixar fonte .SCAD</button><button id="btn-download-stl" class="btn ghost">↓ STL geométrico</button></div><p class="help-caption">O STL é uma prévia geométrica simplificada. A fonte SCAD é editável. Encaixes, tolerâncias e resistência precisam de validação física.</p></div><div class="panel viewport-panel"><div class="panel-title"><strong>Prévia tridimensional</strong><span class="subtle">VISUALIZAÇÃO NÃO FATIADA</span></div><div id="generator-canvas" class="view-3d"><div class="webgl-placeholder">Carregando visualizador 3D...</div></div><div class="viewer-foot"><span>◉ 256 × 256 × 256 mm · Bambu Lab A1</span><span id="generator-dimensions">170 × 52 × 11,2 mm</span></div></div></div></section>
         <section id="page-imagem-stl" class="page">
-          <div class="heading"><div><div class="eyebrow">CONVERSÃO NO DISPOSITIVO · R05</div><h1>Imagem para STL<span class="period">.</span></h1><p>Transforme uma silhueta 2D em sólido 3D. A imagem permanece no seu dispositivo.</p></div></div>
+          <div class="heading"><div><div class="eyebrow">CONVERSÃO NO DISPOSITIVO · R05.1</div><h1>Imagem para STL<span class="period">.</span></h1><p>Transforme uma silhueta 2D em sólido 3D. A imagem permanece no seu dispositivo.</p></div></div>
           <div class="builder-layout">
             <div class="panel builder-panel">
               <div class="panel-title"><strong>Imagem e medidas</strong><span class="new-chip">RELEVO 3D</span></div>
