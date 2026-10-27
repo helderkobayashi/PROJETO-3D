@@ -1,10 +1,10 @@
 {
   "name": "projetos-3d-temon",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Projetos 3D — Bambu Lab A1",
   "scripts": {
-    "check": "node --check app.js && node scripts/validate.mjs"
+    "check": "node --check app.js && node --check image-to-stl.js && node scripts/validate.mjs && node --test tests/relief.test.mjs"
   }
 }
