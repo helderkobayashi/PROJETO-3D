@@ -18,12 +18,39 @@ export function createBinaryMask(imageData, options = {}) {
   for (let i=3; i<data.length; i+=4) if (data[i] < 220) transparent++;
   const useAlpha = transparent / (width*height) > 0.002;
   const mask = new Uint8Array(width * height);
-  for (let i=0;i<mask.length;i++) {
-    const a=data[i*4+3];
-    const lum = 0.2126*data[i*4]+0.7152*data[i*4+1]+0.0722*data[i*4+2];
-    mask[i] = useAlpha ? (a>=128?1:0) : ((options.invert ? lum>threshold : lum<threshold)?1:0);
+  const mode = options.mode === 'background' ? 'background' : 'dark';
+  if (useAlpha) {
+    for (let i=0;i<mask.length;i++) mask[i]=data[i*4+3]>=128 ? 1 : 0;
+  } else if (mode === 'background') {
+    // Flood fill conectado à borda: isola a silhueta INTEIRA do objeto colorido,
+    // sem reduzir boné, rosto e roupas a manchas de luminância.
+    const background = new Uint8Array(mask.length);
+    const seen = new Uint8Array(mask.length);
+    const queue = new Int32Array(mask.length);
+    for (let i=0;i<mask.length;i++) {
+      const r=data[4*i],g=data[4*i+1],b=data[4*i+2];
+      const lum=.2126*r+.7152*g+.0722*b;
+      background[i]=(lum>=threshold && Math.max(r,g,b)-Math.min(r,g,b)<=42) ? 1 : 0;
+    }
+    let head=0,tail=0;
+    function seed(i){if(background[i]&&!seen[i]){seen[i]=1;queue[tail++]=i;}}
+    for(let x=0;x<width;x++){seed(x);seed((height-1)*width+x);}
+    for(let y=0;y<height;y++){seed(y*width);seed(y*width+width-1);}
+    while(head<tail){
+      const i=queue[head++],x=i%width,y=(i/width)|0;
+      if(x>0)seed(i-1);if(x+1<width)seed(i+1);
+      if(y>0)seed(i-width);if(y+1<height)seed(i+width);
+    }
+    if(tail===0)throw new Error('Não foi identificado fundo claro nas bordas. Use “Desenho em preto / áreas escuras” ou remova o fundo da imagem.');
+    for(let i=0;i<mask.length;i++)mask[i]=seen[i]?0:1;
+    if(options.invert)for(let i=0;i<mask.length;i++)mask[i]=mask[i]?0:1;
+  } else {
+    for (let i=0;i<mask.length;i++) {
+      const lum = .2126*data[4*i]+.7152*data[4*i+1]+.0722*data[4*i+2];
+      mask[i]=(options.invert ? lum>threshold : lum<threshold)?1:0;
+    }
   }
-  return {mask,width,height,useAlpha};
+  return {mask,width,height,useAlpha,mode:useAlpha?'alpha':mode};
 }
 
 /** Fecha apenas encontros diagonais, que seriam vértices não-manifold no STL. */
@@ -129,9 +156,16 @@ export function classifyContours(outlines){
   return outers;
 }
 export function rasterToRelief(imageData,options={}) {
-  const {mask,width,height,useAlpha}=createBinaryMask(imageData,options);
-  const bridgeCount=bridgeDiagonalPixels(mask,width,height);
+  const {mask,width,height,useAlpha,mode}=createBinaryMask(imageData,options);
+  // Limpeza antes de fechar diagonais, para não ligar ruídos ao desenho.
   const cleaned=options.clean===false?{pixels:0,islands:0}:removeSmallIslands(mask,width,height,8);
+  let bridgeCount=0;
+  for(let pass=0;pass<Math.max(width,height);pass++) {
+    const n=bridgeDiagonalPixels(mask,width,height);
+    bridgeCount+=n;
+    if(!n)break;
+    if(pass===Math.max(width,height)-1)throw new Error('Não foi possível eliminar conexões diagonais na imagem.');
+  }
   if(mask.every(v=>v===0))throw new Error('Nenhuma silhueta encontrada. Ajuste o limiar ou inverta as cores.');
   if(mask.every(v=>v===1))throw new Error('A imagem inteira foi selecionada. Ajuste o limiar ou inverta as cores.');
   const contours=traceContours(mask,width,height);
@@ -149,29 +183,106 @@ export function rasterToRelief(imageData,options={}) {
     return {outer:cv(outer.points),holes:outer.holes.map(cv)};
   });
   if(vertexCount>40000)throw new Error('Detalhamento excessivo para conversão no navegador. Simplifique a imagem.');
-  return {contours:converted,params:{widthMm,heightMm,depthMm,useAlpha,bridgeCount,cleaned,shapeCount:outers.length,holeCount:outers.reduce((n,o)=>n+o.holes.length,0),vertexCount},mask,maskWidth:width,maskHeight:height};
+  return {contours:converted,params:{widthMm,heightMm,depthMm,useAlpha,mode,bridgeCount,cleaned,shapeCount:outers.length,holeCount:outers.reduce((n,o)=>n+o.holes.length,0),vertexCount},mask,maskWidth:width,maskHeight:height,bounds:{minX,minY,maxX,maxY}};
 }
 
-export async function buildReliefMesh(result) {
+/**
+ * Fallback topológico robusto (sem triangulação de polígonos delicados):
+ * paredes apenas nas fronteiras reais dos pixels e tampas compartilhando
+ * vértices exatos da malha. Preserva furos e regiões separadas.
+ * Retorna arrays puros para serem testados sem WebGL / Three.js.
+ */
+export function rasterToIndexedMesh(result) {
+  const {mask,maskWidth:w,maskHeight:h,bounds,params}=result;
+  if(!mask || !bounds || w*h!==mask.length)throw new Error('Máscara não disponível para construir relevo.');
+  const {minX,maxX,maxY}=bounds,scale=params.widthMm/(bounds.maxX-minX);
+  const positions=[],indices=[],lookup=new Map();
+  const stride=w+1;
+  function node(x,y,z) {
+    const grid=(y*stride+x)*2+z;
+    if(lookup.has(grid))return lookup.get(grid);
+    const idx=positions.length/3;
+    const X=(x-minX)*scale-params.widthMm/2;
+    const Y=(maxY-y)*scale-params.heightMm/2;
+    positions.push(X,Y,z?params.depthMm:0);
+    lookup.set(grid,idx);
+    return idx;
+  }
+  const tri=(a,b,c)=>indices.push(a,b,c);
+  const quad=(a,b,c,d)=>{tri(a,b,c);tri(a,c,d)};
+  let cells=0;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    if(!mask[y*w+x])continue;
+    cells++;
+    const tl0=node(x,y,0),tr0=node(x+1,y,0),br0=node(x+1,y+1,0),bl0=node(x,y+1,0);
+    const tl1=node(x,y,1),tr1=node(x+1,y,1),br1=node(x+1,y+1,1),bl1=node(x,y+1,1);
+    // Tampas: topo +Z, base -Z.
+    tri(tl1,bl1,br1);tri(tl1,br1,tr1);
+    tri(tl0,br0,bl0);tri(tl0,tr0,br0);
+    // Laterais: orientação externa, apenas nas transições sólido/vazio.
+    if(x===0||!mask[y*w+x-1])quad(tl0,bl0,bl1,tl1);
+    if(y===h-1||!mask[(y+1)*w+x])quad(bl0,br0,br1,bl1);
+    if(x===w-1||!mask[y*w+x+1])quad(br0,tr0,tr1,br1);
+    if(y===0||!mask[(y-1)*w+x])quad(tr0,tl0,tl1,tr1);
+  }
+  if(!cells)throw new Error('Não há pixels selecionados para a extrusão.');
+  return {positions:new Float32Array(positions),indices:new Uint32Array(indices),cells};
+}
+
+/** Validação de arestas por índices compartilhados, sem custo de mapas de strings. */
+export function inspectIndexedMesh(mesh) {
+  const {positions,indices}=mesh,vertexCount=positions.length/3;
+  const counts=new Map();let degenerate=0;
+  const add=(a,b)=>{const key=Math.min(a,b)*vertexCount+Math.max(a,b);counts.set(key,(counts.get(key)||0)+1);};
+  for(let i=0;i<indices.length;i+=3){
+    const [a,b,c]=[indices[i],indices[i+1],indices[i+2]];
+    if(a===b||a===c||b===c){degenerate++;continue;}
+    add(a,b);add(b,c);add(c,a);
+  }
+  let nonManifold=0;for(const n of counts.values())if(n!==2)nonManifold++;
+  return {triangles:indices.length/3,degenerate,nonManifold,watertight:indices.length>0&&degenerate===0&&nonManifold===0};
+}
+
+export async function buildReliefMesh(result,{robust=false}={}) {
   const THREE=await import('three');
   const meshes=[];
-  for(const item of result.contours){
-    const shape=new THREE.Shape(item.outer.map(p=>new THREE.Vector2(...p)));
-    for(const hole of item.holes)shape.holes.push(new THREE.Path(hole.map(p=>new THREE.Vector2(...p))));
-    const geometry=new THREE.ExtrudeGeometry(shape,{depth:result.params.depthMm,steps:1,bevelEnabled:false,curveSegments:2});
+  if(robust){
+    const indexed=rasterToIndexedMesh(result);
+    const audit=inspectIndexedMesh(indexed);
+    if(!audit.watertight)throw new Error(`Malha de recuperação não fechada: ${audit.nonManifold} arestas.`);
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.BufferAttribute(indexed.positions,3));
+    geometry.setIndex(new THREE.BufferAttribute(indexed.indices,1));
+    geometry.userData.rasterIndexed=true;
     geometry.computeVertexNormals();
-    meshes.push(new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0x586cf1,roughness:0.65,metalness:0.04,side:THREE.DoubleSide})));
+    const material=new THREE.MeshStandardMaterial({color:0x586cf1,roughness:0.65,metalness:0.04,side:THREE.DoubleSide});
+    meshes.push(new THREE.Mesh(geometry,material));
+  } else {
+    for(const item of result.contours){
+      const shape=new THREE.Shape(item.outer.map(p=>new THREE.Vector2(...p)));
+      for(const hole of item.holes)shape.holes.push(new THREE.Path(hole.map(p=>new THREE.Vector2(...p))));
+      const geometry=new THREE.ExtrudeGeometry(shape,{depth:result.params.depthMm,steps:1,bevelEnabled:false,curveSegments:2});
+      geometry.computeVertexNormals();
+      meshes.push(new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0x586cf1,roughness:0.65,metalness:0.04,side:THREE.DoubleSide})));
+    }
   }
   const group=new THREE.Group();for(const m of meshes)group.add(m);
-  return {THREE,group,meshes};
+  return {THREE,group,meshes,robust};
 }
 
-// Valida arestas soldadas por posição; checagem topológica local, não substitui o Bambu Studio.
+// Valida arestas; versão indexada muito mais eficiente em fotos com vários detalhes.
 export function inspectReliefMesh(group,scale=1e5){
   const count=new Map();let degenerate=0,triangles=0;
   group.traverse(o=>{
     if(!o.isMesh)return;
     const g=o.geometry,pos=g.getAttribute('position'),idx=g.index;
+    if(idx && g.userData.rasterIndexed) {
+      const audit=inspectIndexedMesh({positions:pos.array,indices:idx.array});
+      triangles+=audit.triangles;degenerate+=audit.degenerate;
+      // Relevos raster são gerados como uma única malha; resposta direta.
+      count.set('RASTER_AUDIT',audit.nonManifold===0?2:1);
+      return;
+    }
     const getKey=i=>[0,1,2].map(c=>Math.round(pos.getComponent(i,c)*scale)).join(',');
     for(let t=0;t<(idx?idx.count:pos.count);t+=3){
       const keys=[0,1,2].map(j=>getKey(idx?idx.getX(t+j):t+j));
@@ -230,17 +341,34 @@ export function initImageToStl(){
     if(!raster)return;
     generateBtn.disabled=true;invalidate();stopRenderer();
     try{
-      const options={threshold:Number(byId('relief-threshold').value),invert:byId('relief-invert').checked,clean:byId('relief-clean').checked,
+      const options={mode:byId('relief-mode').value,threshold:Number(byId('relief-threshold').value),invert:byId('relief-invert').checked,clean:byId('relief-clean').checked,
         widthMm:Number(byId('relief-width').value),depthMm:Number(byId('relief-depth').value)};
       if(!Number.isFinite(options.widthMm)||!Number.isFinite(options.depthMm))throw Error('Informe medidas numéricas válidas.');
       prepared=rasterToRelief(raster,options);
-      solid=await buildReliefMesh(prepared);
+      // Primeiro tentamos contornos suaves; se a triangulação falhar,
+      // usamos extrusão por pixels com faces soldadas — sem bloquear o STL.
+      let usedFallback=prepared.params.mode==='background';
+      solid=await buildReliefMesh(prepared,{robust:usedFallback});
       meshAudit=inspectReliefMesh(solid.group);
-      if(!meshAudit.watertight)throw Error(`A malha ainda não está fechada (${meshAudit.nonManifold} arestas irregulares, ${meshAudit.degenerate} triângulos degenerados). Simplifique a imagem.`);
+      if(!meshAudit.watertight && !usedFallback){
+        stopRenderer();
+        usedFallback=true;
+        solid=await buildReliefMesh(prepared,{robust:true});
+        meshAudit=inspectReliefMesh(solid.group);
+      }
+      if(!meshAudit.watertight)throw Error(`Não foi possível fechar a malha (${meshAudit.nonManifold} arestas irregulares). Tente outro modo de recorte.`);
+      // Exibe recorte efetivo (e não somente a fotografia original).
+      const image=ctx.createImageData(prepared.maskWidth,prepared.maskHeight);
+      for(let i=0;i<prepared.mask.length;i++){
+        const n=4*i;
+        image.data[n]=65;image.data[n+1]=100;image.data[n+2]=230;
+        image.data[n+3]=prepared.mask[i]?255:0;
+      }
+      ctx.putImageData(image,0,0);
       await render3D(solid);
       const m=prepared.params;
       byId('relief-dimensions').textContent=`${mm(m.widthMm)} × ${mm(m.heightMm)} × ${mm(m.depthMm)} mm`;
-      showStatus(`Sólido criado: ${m.shapeCount} região(ões), ${m.holeCount} vazado(s), ${meshAudit.triangles.toLocaleString('pt-BR')} triângulos. Malha topologicamente fechada. ${m.useAlpha?'Recorte por transparência.':'Recorte por brilho.'}`);
+      showStatus(`Sólido criado: ${m.shapeCount} região(ões), ${m.holeCount} vazado(s), ${meshAudit.triangles.toLocaleString('pt-BR')} triângulos. Malha fechada${usedFallback?' por reconstrução robusta':''}. ${m.useAlpha?'Recorte pela transparência.':m.mode==='background'?'Objeto isolado do fundo claro.':'Recorte por brilho.'}`);
       exportBtn.disabled=false;
     }catch(e){invalidate();stopRenderer();showStatus(e.message||String(e),true);}
     finally{generateBtn.disabled=false;}
@@ -276,7 +404,7 @@ export function initImageToStl(){
       const payload=result instanceof DataView ? result.buffer.slice(result.byteOffset,result.byteOffset+result.byteLength) : result;
       const blob=new Blob([payload],{type:'model/stl'});
       const link=document.createElement('a'),url=URL.createObjectURL(blob);
-      link.href=url;link.download=`${fileBase}_RELEVO_${Math.round(prepared.params.widthMm)}MM_R04.stl`;
+      link.href=url;link.download=`${fileBase}_RELEVO_${Math.round(prepared.params.widthMm)}MM_R05.stl`;
       document.body.appendChild(link);link.click();link.remove();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
       showStatus('STL exportado. Abra no Bambu Studio, confira escala, fechamento e espessuras antes de imprimir.');
@@ -289,7 +417,7 @@ export function initImageToStl(){
   zone.ondrop=e=>{e.preventDefault();zone.classList.remove('drag');openFile(e.dataTransfer.files[0]);};
   input.onchange=e=>openFile(e.target.files[0]);
   generateBtn.onclick=createModel;exportBtn.onclick=exportStl;
-  for(const id of ['relief-width','relief-depth','relief-threshold','relief-invert','relief-clean']){
+  for(const id of ['relief-width','relief-depth','relief-threshold','relief-invert','relief-clean','relief-mode']){
     const el=byId(id);el.addEventListener('input',()=>{
       if(id==='relief-threshold')byId('relief-threshold-label').textContent=el.value;
       if(prepared){invalidate();showStatus('Parâmetros alterados. Clique em “Gerar relevo 3D” novamente.');}
