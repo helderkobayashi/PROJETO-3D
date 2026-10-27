@@ -12,14 +12,18 @@ const ids=['toast','sidebar','breadcrumb','account-button','dashboard-projects',
   'all-projects','project-search','category-filter','generator-canvas','generator-type',
   'param-length','param-width','param-thickness','param-wall-height','param-clearance',
   'param-text','param-relief','btn-download-scad','btn-download-stl','dropzone',
-  'local-stl','stl-canvas','library-project-filter','library-revision-filter','library-content'];
+  'local-stl','stl-canvas','relief-input','relief-view','relief-width','relief-depth','relief-generate','relief-export','library-project-filter','library-revision-filter','library-content'];
 for(const id of ids)assert.ok(html.includes(`id="${id}"`),`Elemento ausente: ${id}`);
-for(const tab of ['dashboard','projetos','gerador','visualizador','biblioteca'])
+for(const tab of ['dashboard','projetos','gerador','visualizador','biblioteca','imagem-stl'])
   assert.ok(html.includes(`id="page-${tab}"`),`Página ausente: ${tab}`);
 for(const table of ['p3d_projects','p3d_revisions','p3d_parts','p3d_files','p3d_validations'])
   assert.ok(js.includes(`'${table}'`),`Consulta de ${table} não encontrada`);
 assert.ok(!/sb_secret_|SUPABASE_SERVICE_ROLE_KEY|service_role\s*[:=]\s*['"`]/.test(js), 'Credencial confidencial no JavaScript público');
 assert.match(css,/\.library-filters/);
+assert.match(css,/\.relief-upload/);
+assert.match(html,/<script type="module" src="\/app.js"><\/script>/);
+assert.match(js,/image-to-stl\.js/);
+assert.ok(existsSync(new URL('../image-to-stl.js',import.meta.url)));
 for(const f of ['package.json','vercel.json','.github/workflows/check.yml'])
   assert.ok(existsSync(new URL('../'+f,import.meta.url)),`Arquivo ausente ${f}`);
 JSON.parse(read('vercel.json'));
