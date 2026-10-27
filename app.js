@@ -31,7 +31,7 @@ function showPage(page){
   $('breadcrumb').textContent=({dashboard:'Visão geral',projetos:'Meus projetos',gerador:'Gerador 3D',visualizador:'Visualizador STL','imagem-stl':'Imagem para STL',biblioteca:'Arquivos e peças'}[page]||page);
   $('sidebar').classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});
   if(page==='gerador') setTimeout(()=>initGenerator().catch(e=>toast('Prévia 3D indisponível: '+e.message,true)),60);
-  if(page==='imagem-stl') import('./image-to-stl.js').then(m=>m.initImageToStl()).catch(e=>toast('Erro ao abrir Imagem → STL: '+e.message,true));
+  if(page==='imagem-stl') import('./image-to-stl.js?v=R05.1').then(m=>m.initImageToStl()).catch(e=>toast('Erro ao abrir Imagem → STL: '+e.message,true));
   if(page==='biblioteca') renderLibrary();
 }
 
